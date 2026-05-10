@@ -1,0 +1,251 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model users {
+  user_id            Int       @id @default(autoincrement())
+  full_name          String    @db.VarChar(100)
+  email              String    @unique @db.VarChar(150)
+  phone              String    @unique @db.VarChar(20)
+  password_hash      String    @db.VarChar(255)
+  role               role_enum @default(rider)
+  account_status     account_status_enum @default(active)
+  registration_date  DateTime? @default(now()) @db.DateTime(0)
+  drivers            drivers?
+  rider_rides        rides[]   @relation("rides_rider_idTousers")
+  rider_payments     payments[] @relation("payments_rider_idTousers")
+  ratings_given      ratings[] @relation("ratings_rated_by_user_idTousers")
+  ratings_received   ratings[] @relation("ratings_rated_user_idTousers")
+  complaints_filed   complaints[] @relation("complaints_complainant_user_idTousers")
+  complaints_against complaints[] @relation("complaints_against_user_idTousers")
+}
+
+model drivers {
+  driver_id              Int                        @id @default(autoincrement())
+  user_id                Int                        @unique
+  license_number         String?                    @unique @db.VarChar(50)
+  cnic                   String?                    @unique @db.VarChar(20)
+  profile_photo          String?                    @db.VarChar(500)
+  verification_status    verification_status_enum?  @default(pending)
+  availability_status    availability_status_enum?  @default(offline)
+  total_trips_completed  Int?                       @default(0)
+  average_rating         Decimal?                   @default(0.00) @db.Decimal(3, 2)
+  wallet_balance         Decimal?                   @default(0.00) @db.Decimal(10, 2)
+  created_at             DateTime?                  @default(now()) @db.DateTime(0)
+  users                  users                      @relation(fields: [user_id], references: [user_id], onDelete: Cascade, map: "drivers_ibfk_1")
+  rides                  rides[]
+  vehicles               vehicles[]
+  driver_earnings        driver_earnings[]
+}
+
+model vehicles {
+  vehicle_id             Int                        @id @default(autoincrement())
+  driver_id              Int
+  make                   String                     @db.VarChar(50)
+  model                  String                     @db.VarChar(50)
+  year                   Int                        @db.Year
+  color                  String                     @db.VarChar(30)
+  license_plate          String                     @unique @db.VarChar(20)
+  vehicle_type           vehicle_type_enum
+  verification_status    verification_status_enum?  @default(pending)
+  is_active              Boolean?                   @default(true)
+  created_at             DateTime?                  @default(now()) @db.DateTime(0)
+  drivers                drivers                    @relation(fields: [driver_id], references: [driver_id], onDelete: Cascade, map: "vehicles_ibfk_1")
+  rides                  rides[]
+}
+
+model locations {
+  location_id           Int     @id @default(autoincrement())
+  address               String  @db.VarChar(500)
+  city                  String  @db.VarChar(100)
+  latitude              Decimal @db.Decimal(10, 8)
+  longitude             Decimal @db.Decimal(11, 8)
+  rides_pickup          rides[] @relation("rides_pickup_location_idTolocations")
+  rides_dropoff         rides[] @relation("rides_dropoff_location_idTolocations")
+}
+
+model promo_codes {
+  promo_id              Int                @id @default(autoincrement())
+  code                  String             @unique @db.VarChar(30)
+  discount_type         discount_type_enum
+  discount_value        Decimal            @db.Decimal(8, 2)
+  expiry_date           DateTime           @db.Date
+  usage_limit           Int                @default(100)
+  used_count            Int?               @default(0)
+  is_active             Boolean?           @default(true)
+  payments              payments[]
+}
+
+model rides {
+  ride_id               Int                @id @default(autoincrement())
+  rider_id              Int
+  driver_id             Int?
+  vehicle_id            Int?
+  pickup_location_id    Int
+  dropoff_location_id   Int
+  ride_status           ride_status_enum?  @default(requested)
+  request_time          DateTime?          @default(now()) @db.DateTime(0)
+  start_time            DateTime?          @db.DateTime(0)
+  end_time              DateTime?          @db.DateTime(0)
+  distance_km           Decimal?           @db.Decimal(8, 2)
+  duration_minutes      Int?
+  fare_amount           Decimal?           @db.Decimal(10, 2)
+  scheduled_time        DateTime?          @db.DateTime(0)
+  surge_multiplier      Decimal?           @default(1.00) @db.Decimal(4, 2)
+  users                 users              @relation("rides_rider_idTousers", fields: [rider_id], references: [user_id], map: "rides_ibfk_1")
+  drivers               drivers?           @relation(fields: [driver_id], references: [driver_id], map: "rides_ibfk_2")
+  vehicles              vehicles?          @relation(fields: [vehicle_id], references: [vehicle_id], map: "rides_ibfk_3")
+  pickup_location       locations          @relation("rides_pickup_location_idTolocations", fields: [pickup_location_id], references: [location_id], map: "rides_ibfk_4")
+  dropoff_location      locations          @relation("rides_dropoff_location_idTolocations", fields: [dropoff_location_id], references: [location_id], map: "rides_ibfk_5")
+  payments              payments[]
+  ratings               ratings[]
+  complaints            complaints[]
+  driver_earnings       driver_earnings[]
+}
+
+model payments {
+  payment_id            Int                 @id @default(autoincrement())
+  ride_id               Int
+  rider_id              Int
+  promo_id              Int?
+  amount                Decimal             @db.Decimal(10, 2)
+  discount_applied      Decimal?            @default(0.00) @db.Decimal(10, 2)
+  payment_method        payment_method_enum
+  payment_status        payment_status_enum? @default(pending)
+  transaction_date      DateTime?           @default(now()) @db.DateTime(0)
+  rides                 rides               @relation(fields: [ride_id], references: [ride_id], map: "payments_ibfk_1")
+  users                 users               @relation("payments_rider_idTousers", fields: [rider_id], references: [user_id], map: "payments_ibfk_2")
+  promo_codes           promo_codes?        @relation(fields: [promo_id], references: [promo_id], map: "payments_ibfk_3")
+}
+
+model ratings {
+  rating_id             Int       @id @default(autoincrement())
+  ride_id               Int
+  rated_by_user_id      Int
+  rated_user_id         Int
+  score                 Int       @db.TinyInt
+  comment               String?   @db.Text
+  timestamp             DateTime? @default(now()) @db.DateTime(0)
+  rides                 rides     @relation(fields: [ride_id], references: [ride_id], map: "ratings_ibfk_1")
+  rated_by              users     @relation("ratings_rated_by_user_idTousers", fields: [rated_by_user_id], references: [user_id], map: "ratings_ibfk_2")
+  rated_user            users     @relation("ratings_rated_user_idTousers", fields: [rated_user_id], references: [user_id], map: "ratings_ibfk_3")
+
+  @@unique([ride_id, rated_by_user_id], map: "unique_rating")
+}
+
+model complaints {
+  complaint_id          Int                  @id @default(autoincrement())
+  ride_id               Int
+  complainant_user_id   Int
+  against_user_id       Int
+  complaint_text        String               @db.Text
+  complaint_status      complaint_status_enum? @default(open)
+  created_at            DateTime?            @default(now()) @db.DateTime(0)
+  rides                 rides                @relation(fields: [ride_id], references: [ride_id], map: "complaints_ibfk_1")
+  complainant           users                @relation("complaints_complainant_user_idTousers", fields: [complainant_user_id], references: [user_id], map: "complaints_ibfk_2")
+  against               users                @relation("complaints_against_user_idTousers", fields: [against_user_id], references: [user_id], map: "complaints_ibfk_3")
+}
+
+model driver_earnings {
+  earning_id            Int       @id @default(autoincrement())
+  driver_id             Int
+  ride_id               Int
+  gross_amount          Decimal   @db.Decimal(10, 2)
+  commission_rate       Decimal?  @default(15.00) @db.Decimal(5, 2)
+  commission_amount     Decimal   @db.Decimal(10, 2)
+  net_earning           Decimal   @db.Decimal(10, 2)
+  earned_at             DateTime? @default(now()) @db.DateTime(0)
+  drivers               drivers   @relation(fields: [driver_id], references: [driver_id], map: "driver_earnings_ibfk_1")
+  rides                 rides     @relation(fields: [ride_id], references: [ride_id], map: "driver_earnings_ibfk_2")
+}
+
+model fare_config {
+  config_id             Int                @id @default(autoincrement())
+  vehicle_type          vehicle_type_enum  @unique
+  base_rate             Decimal            @db.Decimal(8, 2)
+  per_km_rate           Decimal            @db.Decimal(8, 2)
+  per_minute_rate       Decimal            @db.Decimal(8, 2)
+  surge_threshold       Int                @default(10)
+  surge_multiplier      Decimal            @default(1.50) @db.Decimal(4, 2)
+}
+
+model ride_history {
+  history_id            Int       @id @default(autoincrement())
+  ride_id               Int
+  rider_id              Int
+  driver_id             Int?
+  pickup_city           String?   @db.VarChar(100)
+  dropoff_city          String?   @db.VarChar(100)
+  fare_amount           Decimal?  @db.Decimal(10, 2)
+  ride_status           String?   @db.VarChar(20)
+  archived_at           DateTime? @default(now()) @db.DateTime(0)
+}
+
+enum role_enum {
+  admin
+  rider
+  driver
+}
+
+enum account_status_enum {
+  active
+  suspended
+  banned
+}
+
+enum verification_status_enum {
+  pending
+  verified
+  rejected
+}
+
+enum availability_status_enum {
+  online
+  offline
+  on_trip
+}
+
+enum vehicle_type_enum {
+  economy
+  premium
+  bike
+}
+
+enum discount_type_enum {
+  percentage
+  flat
+}
+
+enum ride_status_enum {
+  requested
+  accepted
+  en_route
+  in_progress
+  completed
+  cancelled
+}
+
+enum payment_method_enum {
+  cash
+  wallet
+  card
+}
+
+enum payment_status_enum {
+  pending
+  paid
+  failed
+  refunded
+}
+
+enum complaint_status_enum {
+  open
+  under_review
+  resolved
+  dismissed
+}
